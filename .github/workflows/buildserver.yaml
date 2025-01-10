@@ -17,8 +17,8 @@ jobs:
                 mkdir build
                 g++ -o build/server.out server.cpp
 
-          - name: Start server
-            run: nohup ./build/server.out &> server.log & disown
+          - name: Stop server
+            run: sleep 60 && pkill server.out
 
 
         
