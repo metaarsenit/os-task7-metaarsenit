@@ -17,6 +17,9 @@ jobs:
                 mkdir build
                 g++ -o build/server.out server.cpp
 
+          - name: Start server
+            run: ./build/server.out
+            
           - name: Stop server
             run: sleep 60 && pkill server.out
 
