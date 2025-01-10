@@ -1,19 +1,12 @@
-// Copyright 2025 metaarsenit
-#undef UNICODE
-
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include<cstring>
 #include<iostream>
+#include<netinet/in.h>
+#include<sys/socket.h>
+#include<unistd.h>
 
-#pragma comment(lib, "Ws2_32.lib")
 
 #define DEFAULT_BUFLEN 1024
-#define DEFAULT_PORT "8080"
+#define DEFAULT_PORT 8080
 
 // Cesar algorithm
 char* code(const char* word, int N, int length) {
@@ -42,169 +35,127 @@ char* code(const char* word, int N, int length) {
 int main() {
     std::cout << "Starting server...\n";
 
-    WSADATA wsaData;
-    int iResult;
+    int ListenSocket = 0;
+    int ClientSocket = 0;
 
-    SOCKET ListenSocket = INVALID_SOCKET;
-    SOCKET ClientSocket = INVALID_SOCKET;
-
-    struct addrinfo* result = NULL;
-    struct addrinfo hints;
-
-    int iSendResult;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_addr_size = sizeof(client_addr);
     char recvbuf[DEFAULT_BUFLEN];
     int recvbuflen = DEFAULT_BUFLEN;
 
-    // Initialize Winsock
-    iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (iResult != 0) {
-        std::cout << "WSAStartup failed with error: " << iResult << "\n";
+    // Create a socket for the server to listen for client connections.
+    ListenSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ListenSocket < 0) {
+        std::cerr << "Socket creation failed with error\n";
         return 1;
     }
 
-    ZeroMemory(&hints, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    hints.ai_flags = AI_PASSIVE;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(DEFAULT_PORT);
 
-    // Resolve the server address and port
-    iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);
-    if (iResult != 0) {
-        std::cout << "getaddrinfo failed with error: " << iResult << "\n";
-        WSACleanup();
+    // Bind the socket to an IP address and port
+    if (bind(ListenSocket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        std::cerr << "Bind failed with error\n";
+        close(ListenSocket);
         return 1;
     }
 
-    // Create a SOCKET for the server to listen for client connections.
-    ListenSocket = socket(result->ai_family,
-                          result->ai_socktype,
-                          result->ai_protocol);
-    if (ListenSocket == INVALID_SOCKET) {
-        std::cout << "socket failed with error: ";
-        std::cout << WSAGetLastError() << "\n";
-        freeaddrinfo(result);
-        WSACleanup();
+    // Listen for incoming connections
+    if (listen(ListenSocket, 5) < 0) {
+        std::cerr << "Listen failed with error\n";
+        close(ListenSocket);
         return 1;
     }
-
-    // Setup the TCP listening socket
-    iResult = bind(ListenSocket,
-                   result->ai_addr,
-                   static_cast<int>(result->ai_addrlen));
-    if (iResult == SOCKET_ERROR) {
-        std::cout << "bind failed with error: ";
-        std::cout << WSAGetLastError() << "\n";
-        freeaddrinfo(result);
-        closesocket(ListenSocket);
-        WSACleanup();
-        return 1;
-    }
-
-    freeaddrinfo(result);
-
-    iResult = listen(ListenSocket, SOMAXCONN);
-    if (iResult == SOCKET_ERROR) {
-        std::cout << "listen failed with error: ";
-        std::cout << WSAGetLastError() << "\n";
-        closesocket(ListenSocket);
-        WSACleanup();
-        return 1;
-    }
-
-
 
     while (true) {
         std::cout << "Waiting for client connection...\n";
 
         // Accept a client socket
-        ClientSocket = accept(ListenSocket, NULL, NULL);
-        if (ClientSocket == INVALID_SOCKET) {
-            std::cout << "accept failed with error: ";
-            std::cout << WSAGetLastError() << "\n";
-            closesocket(ListenSocket);
-            WSACleanup();
+        ClientSocket = accept(ListenSocket, (struct sockaddr*)&client_addr, &client_addr_size);
+        if (ClientSocket < 0) {
+            std::cerr << "Accept failed with error\n";
+            close(ListenSocket);
             return 1;
         }
 
-        // Receive until the peer shuts down the connection
+        // Receive data from the client
         int N = 0;
         char* word = nullptr;
         int c = 0;
 
-        do {
-            iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
-            if (iResult > 0) {
-                std::cout << "Bytes received: " << iResult << "\n";
-                recvbuf[iResult] = '\0';
-                std::cout << "Message received: " << recvbuf << "\n";
-                // Echo the buffer back to the sender
-                if (c == 0) {
-                    word = new char[iResult+1];
-                    for (int i = 0; i < iResult; i++) {
-                        word[i] = recvbuf[i];
-                    }
-                    word[iResult] = '\0';
+        
+        int iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
+        if (iResult > 0) {
+            std::cout << "Bytes received: " << iResult << "\n";
+            recvbuf[iResult] = '\0';
+            std::cout << "Message received: " << recvbuf << "\n";
+
+            int letters = 0, nums = 0;
+            char* wordBuffer = new char[256];
+            char* numBuffer = new char[256];
+            for (int i = 0; i < iResult; i++) {
+                if (std::isalpha(recvbuf[i])) {
+                    wordBuffer[letters] = recvbuf[i];
+                    letters++;
                 }
-
-                if (c == 1) {
-                    char* number = new char[iResult];
-                    for (int i = 0; i < iResult; i++) {
-                        number[i] = recvbuf[i];
-                    }
-                    int N = atoi(number);
-                    delete[] number;
-
-                    char* codedWord = code(word, N, strlen(word));
-                    if (codedWord == nullptr)
-                        break;
-
-                    std::cout << "Coded word: " << codedWord << "\n";
-
-                    iSendResult = send(ClientSocket,
-                                       codedWord,
-                                       strlen(codedWord), 0);
-                    if (iSendResult == SOCKET_ERROR) {
-                        std::cout << "send failed with error: ";
-                        std::cout << WSAGetLastError() << "\n";
-                        closesocket(ClientSocket);
-                        WSACleanup();
-                        return 1;
-                    }
-
-                    std::cout << "Bytes sent: ";
-                    std::cout << iSendResult << "\n";
+                else {
+                    numBuffer[nums] = recvbuf[i];
+                    nums++;
                 }
+            }
+            wordBuffer[letters] = '\0';
+            char* number = new char[nums];
+            for (int i = 0; i < nums; i++) {
+                number[i] = numBuffer[i];
+            }
+            N = atoi(number);
+            std::cout << "Word: " << wordBuffer << "\n";
+            std::cout << "Number: " << N << "\n";
+            delete[] number;
 
-                c++;
-                std::cout << "---------------------\n";
-            } else if (iResult == 0) {
-                std::cout << "Connection closing...\n";
-            } else {
-                std::cout << "recv failed with error: ";
-                std::cout << WSAGetLastError() << "\n";
-                closesocket(ClientSocket);
-                WSACleanup();
+            
+            //word = new char[letters];
+            //for (int i = 0; i < letters i++) {
+            //    word[i] = recvbuf[i];
+            //}
+            //word[iResult] = '\0';
+            char* codedWord = code(wordBuffer, N, letters);
+            if (codedWord == nullptr)
+                continue;
+
+            std::cout << "Coded word: " << codedWord << "\n";
+
+            int iSendResult = send(ClientSocket, codedWord, strlen(codedWord), 0);
+            if (iSendResult < 0) {
+                std::cerr << "Send failed with error\n";
+                close(ClientSocket);
                 return 1;
             }
-        } while (iResult > 0);
 
-        delete[] word;
-        std::cout << "\n\n";
-        // shutdown the connection
-        iResult = shutdown(ClientSocket, SD_SEND);
-        if (iResult == SOCKET_ERROR) {
-            std::cout << "shutdown failed with error: ";
-            std::cout << WSAGetLastError() << "\n";
-            closesocket(ClientSocket);
-            WSACleanup();
+
+            std::cout << "Bytes sent: " << iSendResult << "\n";
+            std::cout << "---------------------\n";
+        } else if (iResult == 0) {
+            std::cout << "Connection closing...\n";
+        } else {
+            std::cerr << "Recv failed with error\n";
+            close(ClientSocket);
             return 1;
         }
     }
 
-    closesocket(ListenSocket);
-    closesocket(ClientSocket);
-    WSACleanup();
 
+    // Shutdown the connection
+    int iResult = shutdown(ClientSocket, SHUT_RDWR);
+    if (iResult < 0) {
+        std::cerr << "Shutdown failed with error\n";
+        close(ClientSocket);
+        return 1;
+    }
+    close(ClientSocket);
+
+    close(ListenSocket);
     return 0;
 }
