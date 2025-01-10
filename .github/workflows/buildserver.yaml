@@ -18,7 +18,11 @@ jobs:
                 g++ -o build/server.out server.cpp
 
           - name: Start server
-            run: nohup ./build/server.out &
+            run: ./build/server.out &
+
+
+          - name: Stop server
+            run: sleep 120 && pkill server.out
 
 
         
