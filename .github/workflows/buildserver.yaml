@@ -20,9 +20,7 @@ jobs:
           - name: Start server
             run: ./build/server.out &
 
-          - name: Stop
-            working-directory: ${{github.workspace}}/build
-            run: sleep 30 && pkill server.out
+
         
 
 
